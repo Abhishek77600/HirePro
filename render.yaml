@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: render-demo-web
+    env: python
+    region: oregon
+    branch: main
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 3 --threads 4 --timeout 120
+    autoDeploy: true
+    envVars:
+      - key: APP_BASE_URL
+        value: https://your-app.onrender.com
+      - key: FLASK_ENV
+        value: production
+      # Do NOT put secrets here. Configure MAIL_*, FLASK_SECRET_KEY and DB credentials
+      # in the Render dashboard (Environment -> Environment Variables).
