@@ -3,6 +3,7 @@ import io
 import json
 import sqlite3
 from flask import Flask, render_template, request, jsonify, Response, session, redirect, url_for
+import urllib.parse
 from werkzeug.security import generate_password_hash, check_password_hash
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -190,7 +191,18 @@ def create_job():
     job_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    return jsonify({'message': 'Job created successfully.', 'interview_link': url_for('interview_page', job_id=job_id, _external=True)})
+    # Build a public interview link using APP_BASE_URL if provided (recommended for hosted deployments).
+    # This avoids returning a localhost:// link when running on Render or other hosts.
+    base = (os.getenv('APP_BASE_URL') or os.getenv('PUBLIC_URL') or os.getenv('BASE_URL'))
+    if base:
+        base = base.rstrip('/') + '/'
+        relative = url_for('interview_page', job_id=job_id, _external=False)
+        interview_link = urllib.parse.urljoin(base, relative.lstrip('/'))
+    else:
+        # Fallback to Flask's external URL builder which uses the current request host.
+        interview_link = url_for('interview_page', job_id=job_id, _external=True)
+
+    return jsonify({'message': 'Job created successfully.', 'interview_link': interview_link})
     
 @app.route('/api/admin/shortlist/<int:job_id>', methods=['POST'])
 def shortlist_candidates(job_id):
@@ -234,7 +246,15 @@ def send_invite(application_id):
     app_data = conn.execute("SELECT c.email, j.title FROM applications a JOIN candidates c ON a.candidate_id = c.id JOIN jobs j ON a.job_id = j.id WHERE a.id = ?", (application_id,)).fetchone()
     if not app_data: conn.close(); return jsonify({'error': 'Application not found.'}), 404
     
-    interview_link = url_for('interview_page', application_id=application_id, _external=True)
+    # Build a public interview link using APP_BASE_URL if provided. This ensures the
+    # emailed link is reachable externally (not a localhost URL when hosted on Render).
+    base = (os.getenv('APP_BASE_URL') or os.getenv('PUBLIC_URL') or os.getenv('BASE_URL'))
+    if base:
+        base = base.rstrip('/') + '/'
+        relative = url_for('interview_page', application_id=application_id, _external=False)
+        interview_link = urllib.parse.urljoin(base, relative.lstrip('/'))
+    else:
+        interview_link = url_for('interview_page', application_id=application_id, _external=True)
     subject = f"Interview Invitation for the {app_data['title']} role"
     body = f"""Dear Candidate,\n\nCongratulations! Your application for the {app_data['title']} position has been shortlisted.\nPlease use the following link to complete your AI-proctored virtual interview:\n{interview_link}\n\nBest of luck!\nThe {session['company_name']} Hiring Team"""
     try:
